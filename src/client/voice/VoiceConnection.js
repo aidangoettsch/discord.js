@@ -37,7 +37,7 @@ const SUPPORTED_MODES = ['xsalsa20_poly1305_lite', 'xsalsa20_poly1305_suffix', '
  * @implements {PlayInterface}
  */
 class VoiceConnection extends EventEmitter {
-  constructor(voiceManager, channel) {
+  constructor(voiceManager, channel, {video, stealthVideo}) {
     super();
 
     /**
@@ -51,6 +51,9 @@ class VoiceConnection extends EventEmitter {
      * @type {VoiceChannel}
      */
     this.channel = channel;
+
+    this.video = video
+    this.stealthVideo = stealthVideo
 
     /**
      * The current status of the voice connection
@@ -342,10 +345,8 @@ class VoiceConnection extends EventEmitter {
    * Attempts to authenticate to the voice server.
    * @private
    */
-  authenticate(video) {
-    this.video = video
-    // this.sendVoiceStateUpdate({self_video: video});
-    this.sendVoiceStateUpdate();
+  authenticate() {
+    this.sendVoiceStateUpdate({self_video: this.stealthVideo ? false : video});
     this.connectTimeout = this.client.setTimeout(() => this.authenticateFailed('VOICE_CONNECTION_TIMEOUT'), 15000);
   }
 
