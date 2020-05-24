@@ -346,7 +346,7 @@ class VoiceConnection extends EventEmitter {
    * @private
    */
   authenticate() {
-    this.sendVoiceStateUpdate({self_video: this.stealthVideo ? false : video});
+    this.sendVoiceStateUpdate({self_video: this.stealthVideo ? false : this.video});
     this.connectTimeout = this.client.setTimeout(() => this.authenticateFailed('VOICE_CONNECTION_TIMEOUT'), 15000);
   }
 
