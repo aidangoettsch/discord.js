@@ -135,23 +135,23 @@ class WebSocketManager extends EventEmitter {
     const invalidToken = new DJSError(WSCodes[4004]);
     const {
       url: gatewayURL,
-      shards: recommendedShards,
       session_start_limit: sessionStartLimit,
-    } = await this.client.api.gateway.bot.get().catch(error => {
+    } = await this.client.api.gateway.get().catch(error => {
       throw error.httpStatus === 401 ? invalidToken : error;
     });
 
     this.sessionStartLimit = sessionStartLimit;
 
-    const { total, remaining, reset_after } = sessionStartLimit;
+    // const { total, remaining, reset_after } = sessionStartLimit;
+    const recommendedShards = 1;
 
     this.debug(`Fetched Gateway Information
     URL: ${gatewayURL}
     Recommended Shards: ${recommendedShards}`);
 
-    this.debug(`Session Limit Information
-    Total: ${total}
-    Remaining: ${remaining}`);
+    // this.debug(`Session Limit Information
+    // Total: ${total}
+    // Remaining: ${remaining}`);
 
     this.gateway = `${gatewayURL}/`;
 
@@ -167,7 +167,7 @@ class WebSocketManager extends EventEmitter {
     this.debug(`Spawning shards: ${shards.join(', ')}`);
     this.shardQueue = new Set(shards.map(id => new WebSocketShard(this, id)));
 
-    await this._handleSessionLimit(remaining, reset_after);
+    // await this._handleSessionLimit(remaining, reset_after);
 
     return this.createShards();
   }

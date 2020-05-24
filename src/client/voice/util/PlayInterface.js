@@ -35,8 +35,9 @@ const { Error } = require('../../../errors');
  * An interface class to allow you to play audio over VoiceConnections and VoiceBroadcasts.
  */
 class PlayInterface {
-  constructor(player) {
+  constructor(player, videoPlayer) {
     this.player = player;
+    this.videoPlayer = videoPlayer;
   }
 
   /**
@@ -84,8 +85,15 @@ class PlayInterface {
     throw new Error('VOICE_PLAY_INTERFACE_BAD_TYPE');
   }
 
+  playVideo(resource, options = {}) {
+    if (resource instanceof Readable || typeof resource === 'string') {
+      return this.videoPlayer.playVideo(resource, options);
+    }
+    throw new Error('VOICE_PLAY_INTERFACE_BAD_TYPE');
+  }
+
   static applyToClass(structure) {
-    for (const prop of ['play']) {
+    for (const prop of ['play', 'playVideo']) {
       Object.defineProperty(structure.prototype, prop, Object.getOwnPropertyDescriptor(PlayInterface.prototype, prop));
     }
   }

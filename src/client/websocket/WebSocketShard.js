@@ -485,7 +485,7 @@ class WebSocketShard extends EventEmitter {
       this.status = Status.READY;
 
       this.emit(ShardEvents.ALL_READY, this.expectedGuilds);
-    }, 15000);
+    }, 1000);
   }
 
   /**

@@ -11,7 +11,7 @@ const { OPCodes, VoiceOPCodes } = require('../../../util/Constants');
  * @private
  */
 class VoiceWebSocket extends EventEmitter {
-  constructor(connection) {
+  constructor(connection, serverID) {
     super();
     /**
      * The Voice Connection that this WebSocket serves
@@ -19,6 +19,7 @@ class VoiceWebSocket extends EventEmitter {
      */
     this.connection = connection;
 
+    this.serverID = serverID ||this.connection.channel.guild.id
     /**
      * How many connection attempts have been made
      * @type {number}
@@ -74,7 +75,7 @@ class VoiceWebSocket extends EventEmitter {
      * The actual WebSocket used to connect to the Voice WebSocket Server.
      * @type {WebSocket}
      */
-    this.ws = WebSocket.create(`wss://${this.connection.authentication.endpoint}/`, { v: 4 });
+    this.ws = WebSocket.create(`wss://${this.connection.authentication.endpoint}/`, { v: 5 });
     this.emit('debug', `[WS] connecting, ${this.attempts} attempts, ${this.ws.url}`);
     this.ws.onopen = this.onOpen.bind(this);
     this.ws.onmessage = this.onMessage.bind(this);
@@ -120,10 +121,10 @@ class VoiceWebSocket extends EventEmitter {
     this.sendPacket({
       op: OPCodes.DISPATCH,
       d: {
-        server_id: this.connection.channel.guild.id,
+        server_id: this.serverID,
         user_id: this.client.user.id,
         token: this.connection.authentication.token,
-        session_id: this.connection.authentication.sessionID,
+        session_id: this.connection.authentication.sessionID
       },
     }).catch(() => {
       this.emit('error', new Error('VOICE_JOIN_SOCKET_CLOSED'));

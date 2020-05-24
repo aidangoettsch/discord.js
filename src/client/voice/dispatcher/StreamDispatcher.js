@@ -4,6 +4,7 @@ const { Writable } = require('stream');
 const secretbox = require('../util/Secretbox');
 const Silence = require('../util/Silence');
 const VolumeInterface = require('../util/VolumeInterface');
+const util = require('util')
 
 const FRAME_LENGTH = 20;
 const CHANNELS = 2;
@@ -30,7 +31,7 @@ const nonce = Buffer.alloc(24);
  * @extends {WritableStream}
  */
 class StreamDispatcher extends Writable {
-  constructor(player, { seek = 0, volume = 1, fec, plp, bitrate = 96, highWaterMark = 12 } = {}, streams) {
+  constructor(player, { seek = 0, volume = 1, fec, plp, bitrate = 96, highWaterMark = 12, live = false } = {}, streams) {
     const streamOptions = { seek, volume, fec, plp, bitrate, highWaterMark };
     super(streamOptions);
     /**
@@ -41,6 +42,7 @@ class StreamDispatcher extends Writable {
     this.streamOptions = streamOptions;
     this.streams = streams;
     this.streams.silence = new Silence();
+    this.live = live
 
     this._nonce = 0;
     this._nonceBuffer = Buffer.alloc(24);
@@ -287,7 +289,7 @@ class StreamDispatcher extends Writable {
      * @event StreamDispatcher#debug
      * @param {string} info The debug info
      */
-    this._setSpeaking(1);
+    this._setSpeaking(this.live ? 2: 1);
     if (!this.player.voiceConnection.sockets.udp) {
       this.emit('debug', 'Failed to send a packet - no UDP socket');
       return;

@@ -63,10 +63,11 @@ class ClientVoiceManager {
   /**
    * Sets up a request to join a voice channel.
    * @param {VoiceChannel} channel The voice channel to join
+   * @param {boolean} video If video should be enabled
    * @returns {Promise<VoiceConnection>}
    * @private
    */
-  joinChannel(channel) {
+  joinChannel(channel, video) {
     return new Promise((resolve, reject) => {
       if (!channel.joinable) {
         throw new Error('VOICE_JOIN_CHANNEL', channel.full);
@@ -85,7 +86,7 @@ class ClientVoiceManager {
         connection.on('debug', msg =>
           this.client.emit('debug', `[VOICE (${channel.guild.id}:${connection.status})]: ${msg}`),
         );
-        connection.authenticate();
+        connection.authenticate(video);
         this.connections.set(channel.guild.id, connection);
       }
 

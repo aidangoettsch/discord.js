@@ -101,5 +101,5 @@ module.exports = {
   VoiceState: require('./structures/VoiceState'),
   Webhook: require('./structures/Webhook'),
 
-  WebSocket: require('./WebSocket'),
+  WebSocket: require('./WebSocket')
 };

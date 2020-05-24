@@ -6,6 +6,7 @@ const prism = require('prism-media');
 const StreamDispatcher = require('../dispatcher/StreamDispatcher');
 
 const FFMPEG_ARGUMENTS = ['-analyzeduration', '0', '-loglevel', '0', '-f', 's16le', '-ar', '48000', '-ac', '2'];
+// const FFMPEG_ARGUMENTS = ['-analyzeduration', '0', '-f', 's16le', '-ar', '48000', '-ac', '2'];
 
 /**
  * An Audio Player for a Voice Connection.

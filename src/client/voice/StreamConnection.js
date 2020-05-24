@@ -3,7 +3,7 @@
 const EventEmitter = require('events');
 const VoiceUDP = require('./networking/VoiceUDPClient');
 const VoiceWebSocket = require('./networking/VoiceWebSocket');
-const AudioPlayer = require('./player/AudioPlayer');
+const AudioPlayer = require('./player/StreamAudioPlayer');
 const VideoPlayer = require('./player/VideoPlayer');
 const VoiceReceiver = require('./receiver/Receiver');
 const PlayInterface = require('./util/PlayInterface');
@@ -12,7 +12,6 @@ const { Error } = require('../../errors');
 const { OPCodes, VoiceOPCodes, VoiceStatus, Events } = require('../../util/Constants');
 const Speaking = require('../../util/Speaking');
 const Util = require('../../util/Util');
-const StreamConnection = require('./StreamConnection')
 
 // Workaround for Discord now requiring silence to be sent before being able to receive audio
 class SingleSilence extends Silence {
@@ -36,27 +35,19 @@ const SUPPORTED_MODES = ['xsalsa20_poly1305_lite', 'xsalsa20_poly1305_suffix', '
  * @extends {EventEmitter}
  * @implements {PlayInterface}
  */
-class VoiceConnection extends EventEmitter {
-  constructor(voiceManager, channel) {
+class StreamConnection extends EventEmitter {
+  constructor(channel, client, serverID) {
     super();
-
-    /**
-     * The voice manager that instantiated this connection
-     * @type {ClientVoiceManager}
-     */
-    this.voiceManager = voiceManager;
-
-    /**
-     * The voice channel this connection is currently serving
-     * @type {VoiceChannel}
-     */
-    this.channel = channel;
 
     /**
      * The current status of the voice connection
      * @type {VoiceStatus}
      */
     this.status = VoiceStatus.AUTHENTICATING;
+
+    this.channel = channel
+    this.client = client
+    this.serverID = serverID
 
     /**
      * Our current speaking state
@@ -147,15 +138,6 @@ class VoiceConnection extends EventEmitter {
   }
 
   /**
-   * The client that instantiated this connection
-   * @type {Client}
-   * @readonly
-   */
-  get client() {
-    return this.voiceManager.client;
-  }
-
-  /**
    * The current stream dispatcher (if any)
    * @type {?StreamDispatcher}
    * @readonly
@@ -195,38 +177,9 @@ class VoiceConnection extends EventEmitter {
   }
 
   /**
-   * Sends a request to the main gateway to join a voice channel.
-   * @param {Object} [options] The options to provide
-   * @returns {Promise<Shard>}
-   * @private
-   */
-  sendVoiceStateUpdate(options = {}) {
-    options = Util.mergeDefault(
-      {
-        guild_id: this.channel.guild.id,
-        channel_id: this.channel.id,
-        self_mute: this.voice ? this.voice.selfMute : false,
-        self_deaf: this.voice ? this.voice.selfDeaf : false,
-      },
-      options,
-    );
-
-    this.emit('debug', `Sending voice state update: ${JSON.stringify(options)}`);
-
-    return this.channel.guild.shard.send(
-      {
-        op: OPCodes.VOICE_STATE_UPDATE,
-        d: options,
-      },
-      true,
-    );
-  }
-
-  /**
    * Set the token and endpoint required to connect to the voice servers.
    * @param {string} token The voice token
    * @param {string} endpoint The voice endpoint
-   * @private
    * @returns {void}
    */
   setTokenAndEndpoint(token, endpoint) {
@@ -329,27 +282,6 @@ class VoiceConnection extends EventEmitter {
   }
 
   /**
-   * Move to a different voice channel in the same guild.
-   * @param {VoiceChannel} channel The channel to move to
-   * @private
-   */
-  updateChannel(channel) {
-    this.channel = channel;
-    this.sendVoiceStateUpdate();
-  }
-
-  /**
-   * Attempts to authenticate to the voice server.
-   * @private
-   */
-  authenticate(video) {
-    this.video = video
-    // this.sendVoiceStateUpdate({self_video: video});
-    this.sendVoiceStateUpdate();
-    this.connectTimeout = this.client.setTimeout(() => this.authenticateFailed('VOICE_CONNECTION_TIMEOUT'), 15000);
-  }
-
-  /**
    * Attempts to reconnect to the voice server (typically after a region change).
    * @param {string} token The voice token
    * @param {string} endpoint The voice endpoint
@@ -378,9 +310,6 @@ class VoiceConnection extends EventEmitter {
     this.client.clearTimeout(this.connectTimeout);
     const conn = this.voiceManager.connections.get(this.channel.guild.id);
     if (conn === this) this.voiceManager.connections.delete(this.channel.guild.id);
-    this.sendVoiceStateUpdate({
-      channel_id: null,
-    });
     this._disconnect();
   }
 
@@ -437,7 +366,7 @@ class VoiceConnection extends EventEmitter {
     if (this.sockets.ws) this.sockets.ws.shutdown();
     if (this.sockets.udp) this.sockets.udp.shutdown();
 
-    this.sockets.ws = new VoiceWebSocket(this);
+    this.sockets.ws = new VoiceWebSocket(this, this.serverID);
     this.sockets.udp = new VoiceUDP(this);
 
     const { ws, udp } = this.sockets;
@@ -476,6 +405,7 @@ class VoiceConnection extends EventEmitter {
    * @private
    */
   onSessionDescription(data) {
+    console.log(data)
     Object.assign(this.authentication, data);
     this.status = VoiceStatus.CONNECTED;
 
@@ -499,8 +429,8 @@ class VoiceConnection extends EventEmitter {
         op: 12,
         d: {
           'audio_ssrc': this.authentication.ssrc,
-          'video_ssrc': this.video ? this.videoSSRC : 0,
-          'rtx_ssrc': this.video ? this.rtxSSRC : 0,
+          'video_ssrc': this.videoSSRC,
+          'rtx_ssrc': this.rtxSSRC,
         }
       })
     }
@@ -556,59 +486,10 @@ class VoiceConnection extends EventEmitter {
     }
   }
 
-  stream() {
-    return new Promise(async (resolve, reject) => {
-      const {streamUrl, streamToken, streamServerID} = await new Promise((resolve, reject) => {
-        const res = {}
-
-        this.client.once('streamServer', (data) => {
-          Object.assign(res, {
-            streamUrl: data.endpoint,
-            streamToken: data.token
-          })
-          if (res.streamServerID) resolve(res)
-        })
-
-        this.client.once('streamCreate', (data) => {
-          Object.assign(res, {
-            streamServerID: data.rtc_server_id,
-          })
-          if (res.streamUrl) resolve(res)
-        })
-
-        this.client.ws.broadcast({
-          op: 18,
-          d: {
-            type: 'guild',
-            guild_id: this.channel.guild.id,
-            channel_id: this.channel.id,
-            preferred_region: 'us-east'
-          }
-        })
-
-        this.client.ws.broadcast({
-          op: 22,
-          d: {
-            stream_key: `guild:${this.channel.guild.id}:${this.channel.id}:${this.client.user.id}`,
-            paused: false
-          }
-        })
-      })
-
-      const conn = new StreamConnection(this.channel, this.client, streamServerID)
-      conn.on('debug', msg =>
-        this.client.emit('debug', `[STREAM (${this.channel.guild.id}:${conn.status})]: ${msg}`),
-      );
-      conn.setSessionID(this.authentication.sessionID)
-      conn.setTokenAndEndpoint(streamToken, streamUrl)
-      conn.on('ready', () => resolve(conn))
-    })
-  }
-
   play() {} // eslint-disable-line no-empty-function
   playVideo() {} // eslint-disable-line no-empty-function
 }
 
-PlayInterface.applyToClass(VoiceConnection);
+PlayInterface.applyToClass(StreamConnection);
 
-module.exports = VoiceConnection;
+module.exports = StreamConnection;
