@@ -6,6 +6,7 @@ const prism = require('prism-media');
 const VideoDispatcher = require('../dispatcher/VideoDispatcher');
 const dgram = require('dgram');
 const ChildProcess = require('child_process');
+const path = require('path')
 
 const FFMPEG_ARGS = {
   VP8: [
@@ -16,12 +17,6 @@ const FFMPEG_ARGS = {
     '-deadline', 'realtime',
     '-f', 'rtp',
     'OUTPUT_URL',
-    '-vn',
-    '-ar', '48000',
-    '-af', "pan=stereo|FL < 1.0*FL + 0.707*FC + 0.707*BL|FR < 1.0*FR + 0.707*FC + 0.707*BR",
-    '-c:a', 'libopus',
-    '-f', 'rtp',
-    'OUTPUT_URL'
   ],
   H264: [
     '-an',
@@ -30,6 +25,8 @@ const FFMPEG_ARGS = {
     '-pix_fmt', 'yuv420p',
     '-f', 'rtp',
     'OUTPUT_URL',
+  ],
+  opus: [
     '-vn',
     '-ar', '48000',
     '-af', "pan=stereo|FL < 1.0*FL + 0.707*FC + 0.707*BL|FR < 1.0*FR + 0.707*FC + 0.707*BR",
@@ -39,6 +36,7 @@ const FFMPEG_ARGS = {
   ]
 }
 const MTU = 1400
+const IMAGE_EXTS = [".jpg", ".png", ".jpeg", ".gif"]
 
 /**
  * A Video Player for a Voice Connection.
@@ -112,20 +110,31 @@ class VideoPlayer extends EventEmitter {
     }
     const isStream = resource instanceof ReadableStream;
     const resourceUri = isStream ? "-" : resource
+    const isImage = isStream ? false : IMAGE_EXTS.includes(path.parse(resource).ext)
 
-    let args = ['-re', '-i', resourceUri, ...FFMPEG_ARGS[this.voiceConnection.videoCodec]]
+    let args = ['-re', '-i', resourceUri, ...FFMPEG_ARGS[this.voiceConnection.videoCodec], ...(isImage ? [] : FFMPEG_ARGS.opus)]
+
+    if (isImage) args.unshift('-loop', '1')
 
     let i = -1
     while ((i = args.indexOf("OUTPUT_URL")) > -1) {
       args[i] = `rtp://127.0.0.1:${port}/?pkt_size=${MTU}`
     }
 
+    console.log(args.join(" "))
     const ffmpeg = ChildProcess.spawn(prism.FFmpeg.getInfo().command, args, { windowsHide: true });
     if (isStream) {
       streams.resource = resource;
       resource.pipe(ffmpeg.stdin);
     }
+    ffmpeg.on('exit', () => {
+      if (isStream) streams.resource.destroy()
+      streams.audioStream.destroy()
+      server.close()
+      this.emit('finish')
+    })
     this.voiceConnection.play(streams.audioStream, {type: 'opus'})
+    return streams
   }
 
   createDispatcher() {
