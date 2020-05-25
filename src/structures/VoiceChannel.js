@@ -130,9 +130,9 @@ class VoiceChannel extends GuildChannel {
    *   .then(connection => console.log('Connected!'))
    *   .catch(console.error);
    */
-  join(video) {
+  join(options) {
     if (browser) return Promise.reject(new Error('VOICE_NO_BROWSER'));
-    return this.client.voice.joinChannel(this, video);
+    return this.client.voice.joinChannel(this, options);
   }
 
   /**
