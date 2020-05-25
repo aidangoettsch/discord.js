@@ -37,7 +37,7 @@ const SUPPORTED_MODES = ['xsalsa20_poly1305_lite', 'xsalsa20_poly1305_suffix', '
  * @implements {PlayInterface}
  */
 class VoiceConnection extends EventEmitter {
-  constructor(voiceManager, channel, {video = false, stealthVideo = false}) {
+  constructor(voiceManager, channel, {video = false, stealthVideo = false} = {}) {
     super();
 
     /**
