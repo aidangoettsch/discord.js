@@ -31,7 +31,7 @@ class VideoDispatcher extends Writable {
 
     this.player = player
     this.voiceConnection = player.voiceConnection
-    this.payloadType = this.voiceConnection.videoCodec === "H264" ? 101 : 103
+    this.payloadType = this.voiceConnection.videoCodec === "H264" ? 101 : (this.voiceConnection.videoCodec === "VP8" ? 103 : 105)
 
     this._nonce = 0;
     this._nonceBuffer = Buffer.alloc(24);

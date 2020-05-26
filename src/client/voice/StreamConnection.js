@@ -36,7 +36,7 @@ const SUPPORTED_MODES = ['xsalsa20_poly1305_lite', 'xsalsa20_poly1305_suffix', '
  * @implements {PlayInterface}
  */
 class StreamConnection extends EventEmitter {
-  constructor(channel, client, serverID) {
+  constructor(voiceConnection, client, serverID) {
     super();
 
     /**
@@ -45,7 +45,8 @@ class StreamConnection extends EventEmitter {
      */
     this.status = VoiceStatus.AUTHENTICATING;
 
-    this.channel = channel
+    this.voiceConnection = voiceConnection
+    this.channel = voiceConnection.channel
     this.client = client
     this.serverID = serverID
 
@@ -308,8 +309,13 @@ class StreamConnection extends EventEmitter {
     this.emit('closing');
     this.emit('debug', 'disconnect() triggered');
     this.client.clearTimeout(this.connectTimeout);
-    const conn = this.voiceManager.connections.get(this.channel.guild.id);
-    if (conn === this) this.voiceManager.connections.delete(this.channel.guild.id);
+    if (this.voiceConnection.streamConn === this) this.voiceConnection.streamConn = null
+    this.channel.guild.shard.send({
+      op: 19,
+      d: {
+        stream_key: `guild:${this.channel.guild.id}:${this.channel.id}:${this.client.user.id}`
+      }
+    })
     this._disconnect();
   }
 
@@ -333,6 +339,7 @@ class StreamConnection extends EventEmitter {
    */
   cleanup() {
     this.player.destroy();
+    this.videoPlayer.destroy();
     this.speaking = new Speaking().freeze();
     const { ws, udp } = this.sockets;
 
@@ -484,6 +491,32 @@ class StreamConnection extends EventEmitter {
         this.client.emit(Events.GUILD_MEMBER_SPEAKING, member, speaking);
       }
     }
+  }
+
+  async resetVideoContext() {
+    this.channel.guild.shard.send({
+      op: 22,
+      d: {
+        stream_key: `guild:${this.channel.guild.id}:${this.channel.id}:${this.client.user.id}`,
+        paused: false
+      }
+    })
+    await this.sockets.ws.sendPacket({
+      op: 12,
+      d: {
+        'audio_ssrc': this.authentication.ssrc,
+        'video_ssrc': 0,
+        'rtx_ssrc': 0,
+      }
+    })
+    await this.sockets.ws.sendPacket({
+      op: 12,
+      d: {
+        'audio_ssrc': this.authentication.ssrc,
+        'video_ssrc': this.videoSSRC,
+        'rtx_ssrc': this.rtxSSRC,
+      }
+    })
   }
 
   play() {} // eslint-disable-line no-empty-function

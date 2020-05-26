@@ -338,6 +338,10 @@ class VoiceConnection extends EventEmitter {
    */
   updateChannel(channel) {
     this.channel = channel;
+    if (this.streamConn) {
+      this.streamConn.disconnect()
+      this.streamConn = null
+    }
     this.sendVoiceStateUpdate();
   }
 
@@ -392,6 +396,7 @@ class VoiceConnection extends EventEmitter {
   _disconnect() {
     this.cleanup();
     this.status = VoiceStatus.DISCONNECTED;
+    if (this.streamConn) this.streamConn.disconnect()
     /**
      * Emitted when the voice connection disconnects.
      * @event VoiceConnection#disconnect
@@ -405,6 +410,7 @@ class VoiceConnection extends EventEmitter {
    */
   cleanup() {
     this.player.destroy();
+    this.videoPlayer.destroy();
     this.speaking = new Speaking().freeze();
     const { ws, udp } = this.sockets;
 
@@ -558,51 +564,71 @@ class VoiceConnection extends EventEmitter {
   }
 
   stream() {
-    return new Promise(async (resolve, reject) => {
-      const {streamUrl, streamToken, streamServerID} = await new Promise((resolve, reject) => {
-        const res = {}
+    return new Promise((resolve, reject) => {
+      if (this.streamConn) reject("ALREADY_STREAMING")
+      const res = {}
 
-        this.client.once('streamServer', (data) => {
-          Object.assign(res, {
-            streamUrl: data.endpoint,
-            streamToken: data.token
-          })
-          if (res.streamServerID) resolve(res)
+      this.client.once('streamServer', (data) => {
+        Object.assign(res, {
+          streamUrl: data.endpoint,
+          streamToken: data.token
         })
-
-        this.client.once('streamCreate', (data) => {
-          Object.assign(res, {
-            streamServerID: data.rtc_server_id,
-          })
-          if (res.streamUrl) resolve(res)
-        })
-
-        this.client.ws.broadcast({
-          op: 18,
-          d: {
-            type: 'guild',
-            guild_id: this.channel.guild.id,
-            channel_id: this.channel.id,
-            preferred_region: 'us-east'
-          }
-        })
-
-        this.client.ws.broadcast({
-          op: 22,
-          d: {
-            stream_key: `guild:${this.channel.guild.id}:${this.channel.id}:${this.client.user.id}`,
-            paused: false
-          }
-        })
+        if (res.streamServerID) resolve(res)
       })
 
-      const conn = new StreamConnection(this.channel, this.client, streamServerID)
+      this.client.once('streamCreate', (data) => {
+        Object.assign(res, {
+          streamServerID: data.rtc_server_id,
+        })
+        if (res.streamUrl) resolve(res)
+      })
+
+      this.channel.guild.shard.send({
+        op: 18,
+        d: {
+          type: 'guild',
+          guild_id: this.channel.guild.id,
+          channel_id: this.channel.id,
+          preferred_region: 'us-east'
+        }
+      })
+
+      this.channel.guild.shard.send({
+        op: 22,
+        d: {
+          stream_key: `guild:${this.channel.guild.id}:${this.channel.id}:${this.client.user.id}`,
+          paused: false
+        }
+      })
+    }).then(({streamUrl, streamToken, streamServerID}) => new Promise((resolve, reject) => {
+      const conn = new StreamConnection(this, this.client, streamServerID)
+      this.streamConn = conn
       conn.on('debug', msg =>
         this.client.emit('debug', `[STREAM (${this.channel.guild.id}:${conn.status})]: ${msg}`),
       );
       conn.setSessionID(this.authentication.sessionID)
       conn.setTokenAndEndpoint(streamToken, streamUrl)
       conn.on('ready', () => resolve(conn))
+      conn.on('error', (e) => reject(error))
+    }))
+  }
+
+  async resetVideoContext() {
+    await this.sockets.ws.sendPacket({
+      op: 12,
+      d: {
+        'audio_ssrc': this.authentication.ssrc,
+        'video_ssrc': 0,
+        'rtx_ssrc': 0,
+      }
+    })
+    await this.sockets.ws.sendPacket({
+      op: 12,
+      d: {
+        'audio_ssrc': this.authentication.ssrc,
+        'video_ssrc': this.video ? this.videoSSRC : 0,
+        'rtx_ssrc': this.video ? this.rtxSSRC : 0,
+      }
     })
   }
 
