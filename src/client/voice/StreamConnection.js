@@ -412,7 +412,6 @@ class StreamConnection extends EventEmitter {
    * @private
    */
   onSessionDescription(data) {
-    console.log(data)
     Object.assign(this.authentication, data);
     this.status = VoiceStatus.CONNECTED;
 
