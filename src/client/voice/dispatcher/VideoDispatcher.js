@@ -170,13 +170,11 @@ class VideoDispatcher extends Writable {
       newPayloadDescriptor.writeUInt16BE(this.streamingData.pictureId | 0x8000, 2)
 
       buffer = Buffer.concat([newPayloadDescriptor, buffer.slice(payloadDescriptorLen)])
-      // console.log(`[VP8 ${sequence} ${timestamp} to ${this.voiceConnection.videoSSRC}] PI: ${partitionIndex} PS: ${partitionStart} NRF: ${nonReferenceFrame} XCP: ${extendedControlPresent} ${util.inspect(buffer)}`)
 
       if (marker) this.streamingData.pictureId++
       if (this.streamingData.pictureId >= 2**15) this.streamingData.pictureId = 0
     }
     buffer = Buffer.concat([numBuffer, buffer])
-    // console.debug(`[SENT ${sequence} ${timestamp} to ${this.voiceConnection.videoSSRC}] ${util.inspect(buffer)}`)
     return Buffer.concat([packetBuffer, ...this._encrypt(buffer)]);
   }
 

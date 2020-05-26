@@ -137,7 +137,6 @@ class VideoPlayer extends EventEmitter {
       args[i] = `${bitrate}`
     }
 
-    console.log(args.join(" "))
     this.ffmpeg = ChildProcess.spawn(prism.FFmpeg.getInfo().command, args, {windowsHide: true});
     if (isStream) {
       streams.resource = resource;
