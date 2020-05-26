@@ -79,7 +79,7 @@ class VideoPlayer extends EventEmitter {
     }
   }
 
-  async playVideo(resource, { bitrate = "1M", volume = 1.0 }) {
+  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false } = {}) {
     await this.voiceConnection.resetVideoContext()
     const isStream = resource instanceof ReadableStream;
     if (!FFMPEG_ARGS.hasOwnProperty(this.voiceConnection.videoCodec)) {
@@ -127,6 +127,7 @@ class VideoPlayer extends EventEmitter {
     let args = ['-re', '-i', resourceUri, ...FFMPEG_ARGS[this.voiceConnection.videoCodec], ...(isImage ? [] : FFMPEG_ARGS.opus)]
 
     if (isImage) args.unshift('-loop', '1')
+    if (listen) args.unshift('-listen', '1')
 
     let i = -1
     while ((i = args.indexOf("OUTPUT_URL")) > -1) {
@@ -136,6 +137,8 @@ class VideoPlayer extends EventEmitter {
     while ((i = args.indexOf("BITRATE")) > -1) {
       args[i] = `${bitrate}`
     }
+
+    this.voiceConnection.emit('debug', `Launching FFMPEG: ${prism.FFmpeg.getInfo().command} ${args.join(" ")}`)
 
     this.ffmpeg = ChildProcess.spawn(prism.FFmpeg.getInfo().command, args, {windowsHide: true});
     if (isStream) {
