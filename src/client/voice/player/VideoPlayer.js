@@ -152,8 +152,10 @@ class VideoPlayer extends EventEmitter {
       this.ffmpeg = null
       this.emit('finish')
     })
-    this.voiceConnection.play(streams.audioStream, {type: 'opus', volume})
-    return streams
+    return {
+      video: this.dispatcher,
+      audio: this.voiceConnection.play(streams.audioStream, {type: 'opus', volume})
+    }
   }
 
   createDispatcher() {
