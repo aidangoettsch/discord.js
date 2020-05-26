@@ -79,7 +79,7 @@ class VideoPlayer extends EventEmitter {
     }
   }
 
-  async playVideo(resource, { bitrate = "1M"} = {}) {
+  async playVideo(resource, { bitrate = "1M", volume = 1.0 }) {
     await this.voiceConnection.resetVideoContext()
     const isStream = resource instanceof ReadableStream;
     if (!FFMPEG_ARGS.hasOwnProperty(this.voiceConnection.videoCodec)) {
@@ -149,7 +149,7 @@ class VideoPlayer extends EventEmitter {
       this.ffmpeg = null
       this.emit('finish')
     })
-    this.voiceConnection.play(streams.audioStream, {type: 'opus'})
+    this.voiceConnection.play(streams.audioStream, {type: 'opus', volume})
     return streams
   }
 
