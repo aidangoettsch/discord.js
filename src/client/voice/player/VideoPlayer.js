@@ -89,29 +89,25 @@ class VideoPlayer extends EventEmitter {
 
     this.dispatcher = this.createDispatcher()
 
-    const server = dgram.createSocket('udp4');
+    this.server = dgram.createSocket('udp4');
     const streams = audio ? {
       audioStream: new PassThroughStream()
     } : {}
-    server.on('error', (err) => {
-      server.close();
+    this.server.on('error', (err) => {
+      this.server.close();
       throw err
     });
 
-    server.on('message', (buffer) => {
+    this.server.on('message', (buffer) => {
       const payloadType = buffer[1] & 0b1111111
       if (payloadType === 96 && this.dispatcher) this.dispatcher.write(buffer)
       if (payloadType === 97 && audio) streams.audioStream.write(buffer.slice(12))
     });
 
-    server.on('listening', () => {
-      const address = server.address();
-    });
-
     let port = 41234
     while (port < 41240) {
       try {
-        server.bind(port);
+        this.server.bind(port);
         break
       } catch {
         port++
@@ -142,11 +138,12 @@ class VideoPlayer extends EventEmitter {
 
     this.ffmpeg = ChildProcess.spawn(prism.FFmpeg.getInfo().command, args, {windowsHide: true});
     if (isStream) {
-      streams.resource = resource;
+      this.inputStream = streams.resource = resource;
       resource.pipe(this.ffmpeg.stdin);
     }
     this.ffmpeg.on('exit', () => {
-      server.close()
+      if (this.inputStream) this.inputStream.destroy()
+      this.server.close()
       streams.audioStream.destroy()
       if (isStream) streams.resource.destroy()
       this.ffmpeg = null
