@@ -410,7 +410,6 @@ class VoiceConnection extends EventEmitter {
    */
   cleanup() {
     this.player.destroy();
-    this.videoPlayer.destroy();
     this.speaking = new Speaking().freeze();
     const { ws, udp } = this.sockets;
 

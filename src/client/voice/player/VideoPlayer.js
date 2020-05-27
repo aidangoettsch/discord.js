@@ -68,9 +68,22 @@ class VideoPlayer extends EventEmitter {
   }
 
   destroy() {
-    if (this.inputStream) this.inputStream.destroy()
-    this.server.close()
-    if (this.ffmpeg) this.ffmpeg.kill()
+    if (this.inputStream) {
+      this.inputStream.once('error', () => {
+        console.log(`closing input`)
+        if (this.ffmpeg) this.ffmpeg.kill('SIGINT')
+      })
+      this.inputStream.destroy("reeeee")
+      this.inputStream = null
+    } else if (this.ffmpeg) this.ffmpeg.kill('SIGINT')
+    if (this.server) {
+      this.server.close()
+      this.server = null
+    }
+    if (this.streams.audioStream) {
+      this.streams.audioStream.destroy()
+      this.streams.audioStream = null
+    }
     this.destroyDispatcher();
   }
 
@@ -96,14 +109,14 @@ class VideoPlayer extends EventEmitter {
       audioStream: new PassThroughStream()
     } : {}
     this.server.on('error', (err) => {
-      this.emit('error', err)
-      this.server.close();
+      this.destroy();
+      this.emit('finish')
     });
 
     this.server.on('message', (buffer) => {
       const payloadType = buffer[1] & 0b1111111
       if (payloadType === 96 && this.dispatcher) this.dispatcher.write(buffer)
-      if (payloadType === 97 && audio) streams.audioStream.write(buffer.slice(12))
+      if (payloadType === 97 && audio && streams.audioStream) streams.audioStream.write(buffer.slice(12))
     });
 
     let port = 41234
@@ -144,19 +157,14 @@ class VideoPlayer extends EventEmitter {
       resource.pipe(this.ffmpeg.stdin);
     }
     this.ffmpeg.on('exit', () => {
-      if (this.inputStream) this.inputStream.destroy()
-      this.server.close()
-      streams.audioStream.destroy()
+      this.destroy()
       this.ffmpeg = null
       this.emit('finish')
     })
-
-    for (const streamIdent in streams) {
-      if (streams.hasOwnProperty(streamIdent))
-        streams[streamIdent].on('error', (e) => {
-          this.emit('error', `[${streamIdent}] ${e.message}`)
-        })
-    }
+    this.ffmpeg.stdin.on('error', (e) => {
+      console.error(`[ffmpeg in] ${e.message}`)
+    })
+    this.streams = streams
     return audio ? {
       video: this.dispatcher,
       audio: this.voiceConnection.play(streams.audioStream, {type: 'opus', volume})
