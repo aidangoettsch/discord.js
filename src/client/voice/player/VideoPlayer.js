@@ -68,6 +68,8 @@ class VideoPlayer extends EventEmitter {
   }
 
   destroy() {
+    if (this.inputStream) this.inputStream.destroy()
+    this.server.close()
     if (this.ffmpeg) this.ffmpeg.kill()
     this.destroyDispatcher();
   }
@@ -145,7 +147,6 @@ class VideoPlayer extends EventEmitter {
       if (this.inputStream) this.inputStream.destroy()
       this.server.close()
       streams.audioStream.destroy()
-      if (isStream) streams.resource.destroy()
       this.ffmpeg = null
       this.emit('finish')
     })
