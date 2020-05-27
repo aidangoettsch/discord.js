@@ -96,8 +96,8 @@ class VideoPlayer extends EventEmitter {
       audioStream: new PassThroughStream()
     } : {}
     this.server.on('error', (err) => {
+      this.emit('error', err)
       this.server.close();
-      throw err
     });
 
     this.server.on('message', (buffer) => {
@@ -150,6 +150,13 @@ class VideoPlayer extends EventEmitter {
       this.ffmpeg = null
       this.emit('finish')
     })
+
+    for (const streamIdent in streams) {
+      if (streams.hasOwnProperty(streamIdent))
+        streams[streamIdent].on('error', (e) => {
+          this.emit('error', `[${streamIdent}] ${e.message}`)
+        })
+    }
     return audio ? {
       video: this.dispatcher,
       audio: this.voiceConnection.play(streams.audioStream, {type: 'opus', volume})
