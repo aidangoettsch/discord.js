@@ -79,7 +79,7 @@ class VideoPlayer extends EventEmitter {
     }
   }
 
-  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false } = {}) {
+  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false, audio = true } = {}) {
     await this.voiceConnection.resetVideoContext()
     const isStream = resource instanceof ReadableStream;
     if (!FFMPEG_ARGS.hasOwnProperty(this.voiceConnection.videoCodec)) {
@@ -90,9 +90,9 @@ class VideoPlayer extends EventEmitter {
     this.dispatcher = this.createDispatcher()
 
     const server = dgram.createSocket('udp4');
-    const streams = {
+    const streams = audio ? {
       audioStream: new PassThroughStream()
-    };
+    } : {}
     server.on('error', (err) => {
       server.close();
       throw err
@@ -101,7 +101,7 @@ class VideoPlayer extends EventEmitter {
     server.on('message', (buffer) => {
       const payloadType = buffer[1] & 0b1111111
       if (payloadType === 96 && this.dispatcher) this.dispatcher.write(buffer)
-      if (payloadType === 97) streams.audioStream.write(buffer.slice(12))
+      if (payloadType === 97 && audio) streams.audioStream.write(buffer.slice(12))
     });
 
     server.on('listening', () => {
@@ -124,7 +124,7 @@ class VideoPlayer extends EventEmitter {
     const resourceUri = isStream ? "-" : resource
     const isImage = isStream ? false : IMAGE_EXTS.includes(path.parse(resource).ext)
 
-    let args = ['-re', '-i', resourceUri, ...FFMPEG_ARGS[this.voiceConnection.videoCodec], ...(isImage ? [] : FFMPEG_ARGS.opus)]
+    let args = ['-re', '-i', resourceUri, ...FFMPEG_ARGS[this.voiceConnection.videoCodec], ...((!isImage && audio) ? FFMPEG_ARGS.opus : [])]
 
     if (isImage) args.unshift('-loop', '1')
     if (listen) args.unshift('-listen', '1')
@@ -152,10 +152,10 @@ class VideoPlayer extends EventEmitter {
       this.ffmpeg = null
       this.emit('finish')
     })
-    return {
+    return audio ? {
       video: this.dispatcher,
       audio: this.voiceConnection.play(streams.audioStream, {type: 'opus', volume})
-    }
+    } : { video: this.dispatcher }
   }
 
   createDispatcher() {
