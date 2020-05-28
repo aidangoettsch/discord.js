@@ -30,9 +30,22 @@ const FFMPEG_ARGS = {
   ],
   H264: [
     '-an',
-    '-c:v', 'libopenh264',
+    '-c:v', 'libx264',
     '-b:v', 'BITRATE',
+    '-bufsize', '1M',
     '-pix_fmt', 'yuv420p',
+    '-preset', 'veryfast',
+    '-profile:v', 'baseline',
+    '-f', 'rtp',
+    'OUTPUT_URL',
+  ],
+  H264_NVENC: [
+    '-an',
+    '-c:v', 'h264_nvenc',
+    '-b:v', 'BITRATE',
+    '-bufsize', '1M',
+    '-pix_fmt', 'yuv420p',
+    '-profile:v', 'baseline',
     '-f', 'rtp',
     'OUTPUT_URL',
   ],
@@ -68,14 +81,15 @@ class VideoPlayer extends EventEmitter {
   }
 
   destroy() {
+    if (this.ffmpeg) this.ffmpeg.kill('SIGINT')
+    this.destroyDispatcher();
+  }
+
+  _destroy() {
     if (this.inputStream) {
-      this.inputStream.once('error', () => {
-        console.log(`closing input`)
-        if (this.ffmpeg) this.ffmpeg.kill('SIGINT')
-      })
-      this.inputStream.destroy("reeeee")
+      this.inputStream.destroy()
       this.inputStream = null
-    } else if (this.ffmpeg) this.ffmpeg.kill('SIGINT')
+    }
     if (this.server) {
       this.server.close()
       this.server = null
@@ -84,7 +98,7 @@ class VideoPlayer extends EventEmitter {
       this.streams.audioStream.destroy()
       this.streams.audioStream = null
     }
-    this.destroyDispatcher();
+    this.emit('finish')
   }
 
   destroyDispatcher() {
@@ -94,7 +108,7 @@ class VideoPlayer extends EventEmitter {
     }
   }
 
-  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false, audio = true } = {}) {
+  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false, audio = true, useNvenc = false } = {}) {
     await this.voiceConnection.resetVideoContext()
     const isStream = resource instanceof ReadableStream;
     if (!FFMPEG_ARGS.hasOwnProperty(this.voiceConnection.videoCodec)) {
@@ -134,8 +148,9 @@ class VideoPlayer extends EventEmitter {
     }
     const resourceUri = isStream ? "-" : resource
     const isImage = isStream ? false : IMAGE_EXTS.includes(path.parse(resource).ext)
+    const encoderName = (this.voiceConnection.videoCodec === "H264" && useNvenc) ? "H264_NVENC" : this.voiceConnection.videoCodec
 
-    let args = ['-re', '-i', resourceUri, ...FFMPEG_ARGS[this.voiceConnection.videoCodec], ...((!isImage && audio) ? FFMPEG_ARGS.opus : [])]
+    let args = ['-re', '-i', resourceUri, ...FFMPEG_ARGS[encoderName], ...((!isImage && audio) ? FFMPEG_ARGS.opus : [])]
 
     if (isImage) args.unshift('-loop', '1')
     if (listen) args.unshift('-listen', '1')
@@ -157,12 +172,15 @@ class VideoPlayer extends EventEmitter {
       resource.pipe(this.ffmpeg.stdin);
     }
     this.ffmpeg.on('exit', () => {
-      this.destroy()
+      this._destroy()
       this.ffmpeg = null
       this.emit('finish')
     })
     this.ffmpeg.stdin.on('error', (e) => {
-      console.error(`[ffmpeg in] ${e.message}`)
+      this.emit('debug',`[ffmpeg in] ${e.message}`)
+    })
+    this.ffmpeg.stderr.on('data', (e) => {
+      this.emit('debug', `[ffmpeg err] ${e.toString()}`)
     })
     this.streams = streams
     return audio ? {
