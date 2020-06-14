@@ -49,6 +49,17 @@ const FFMPEG_ARGS = {
     '-f', 'rtp',
     'OUTPUT_URL',
   ],
+  H264_VAAPI: [
+    '-an',
+    '-c:v', 'h264_vaapi',
+    '-b:v', 'BITRATE',
+    '-bufsize', '1M',
+    '-pix_fmt', 'yuv420p',
+    '-vaapi_device', '/dev/dri/renderD128',
+    '-profile:v', 'constrained_baseline',
+    '-f', 'rtp',
+    'OUTPUT_URL',
+  ],
   opus: [
     '-vn',
     '-ar', '48000',
@@ -59,7 +70,8 @@ const FFMPEG_ARGS = {
   ]
 }
 const MTU = 1400
-const IMAGE_EXTS = [".jpg", ".png", ".jpeg", ".gif"]
+const IMAGE_EXTS = [".jpg", ".png", ".jpeg"]
+const JPEG_EXTS = [".jpg", ".jpeg"]
 
 /**
  * A Video Player for a Voice Connection.
@@ -86,9 +98,9 @@ class VideoPlayer extends EventEmitter {
   }
 
   _destroy() {
-    if (this.inputStream) {
-      this.inputStream.destroy()
-      this.inputStream = null
+    if (this.streams.resource) {
+      this.streams.resource.destroy()
+      this.streams.resource = null
     }
     if (this.server) {
       this.server.close()
@@ -108,13 +120,14 @@ class VideoPlayer extends EventEmitter {
     }
   }
 
-  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false, audio = true, useNvenc = false } = {}) {
+  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false, audio = true, useNvenc = false, useVaapi = false, inputFormat = "", manualFfmpeg = false, audioDelay = 0 } = {}) {
     await this.voiceConnection.resetVideoContext()
     const isStream = resource instanceof ReadableStream;
     if (!FFMPEG_ARGS.hasOwnProperty(this.voiceConnection.videoCodec)) {
       console.error(`[PLAY VIDEO ERROR] Codec ${this.voiceConnection.videoCodec} not supported`)
       return
     }
+    if (isStream && manualFfmpeg) throw Error("Cannot run manual FFMPEG if input is a stream")
 
     this.dispatcher = this.createDispatcher()
 
@@ -148,12 +161,21 @@ class VideoPlayer extends EventEmitter {
     }
     const resourceUri = isStream ? "-" : resource
     const isImage = isStream ? false : IMAGE_EXTS.includes(path.parse(resource).ext)
-    const encoderName = (this.voiceConnection.videoCodec === "H264" && useNvenc) ? "H264_NVENC" : this.voiceConnection.videoCodec
+    const encoderName = (this.voiceConnection.videoCodec === "H264" && useNvenc) ? "H264_NVENC" :
+      (this.voiceConnection.videoCodec === "H264" && useVaapi ? "H264_VAAPI" : this.voiceConnection.videoCodec)
 
-    let args = ['-re', '-i', resourceUri, ...FFMPEG_ARGS[encoderName], ...((!isImage && audio) ? FFMPEG_ARGS.opus : [])]
+    let args = [
+      '-protocol_whitelist', 'tcp,tls,pipe,http,https,crypto',
+      '-re',
+      ...(isImage && JPEG_EXTS.includes(path.parse(resource).ext) ? ['-f', 'jpeg_pipe'] : []),
+      '-i', resourceUri,
+      ...FFMPEG_ARGS[encoderName],
+      ...((!isImage && audio) ? FFMPEG_ARGS.opus : [])
+    ]
 
     if (isImage) args.unshift('-loop', '1')
     if (listen) args.unshift('-listen', '1')
+    if (inputFormat) args.unshift('-f', inputFormat)
 
     let i = -1
     while ((i = args.indexOf("OUTPUT_URL")) > -1) {
@@ -165,28 +187,40 @@ class VideoPlayer extends EventEmitter {
     }
 
     this.voiceConnection.emit('debug', `Launching FFMPEG: ${prism.FFmpeg.getInfo().command} ${args.join(" ")}`)
-
-    this.ffmpeg = ChildProcess.spawn(prism.FFmpeg.getInfo().command, args, {windowsHide: true});
-    if (isStream) {
-      this.inputStream = streams.resource = resource;
-      resource.pipe(this.ffmpeg.stdin);
+    if (!manualFfmpeg) {
+      this.ffmpeg = ChildProcess.spawn(prism.FFmpeg.getInfo().command, args, {windowsHide: true});
+      if (isStream) {
+        streams.resource = resource;
+        resource.pipe(this.ffmpeg.stdin);
+      }
+      this.ffmpeg.on('exit', () => {
+        this._destroy()
+        this.ffmpeg = null
+        this.emit('finish')
+      })
+      this.ffmpeg.stdin.on('error', (e) => {
+        this.emit('debug', `[ffmpeg in] ${e.message}`)
+      })
+      this.ffmpeg.stderr.on('data', (e) => {
+        this.emit('debug', `[ffmpeg err] ${e.toString()}`)
+      })
+      this.ffmpeg.stderr.on('error', (e) => {
+        this.emit('debug', `[ffmpeg err] ${e.toString()}`)
+      })
     }
-    this.ffmpeg.on('exit', () => {
-      this._destroy()
-      this.ffmpeg = null
-      this.emit('finish')
-    })
-    this.ffmpeg.stdin.on('error', (e) => {
-      this.emit('debug',`[ffmpeg in] ${e.message}`)
-    })
-    this.ffmpeg.stderr.on('data', (e) => {
-      this.emit('debug', `[ffmpeg err] ${e.toString()}`)
-    })
+    if (streams.audioStream && audioDelay) {
+      streams.audioStream.pause()
+      setTimeout(() => {
+        streams.audioStream.resume()
+      }, audioDelay)
+    }
+
     this.streams = streams
-    return audio ? {
+    return {
       video: this.dispatcher,
-      audio: this.voiceConnection.play(streams.audioStream, {type: 'opus', volume})
-    } : { video: this.dispatcher }
+      ...(audio ? { audio: this.voiceConnection.play(streams.audioStream, {type: 'opus', volume}) } : {}),
+      ...(manualFfmpeg ? { args: `ffmpeg ${args.join(" ")}`} : {})
+    }
   }
 
   createDispatcher() {

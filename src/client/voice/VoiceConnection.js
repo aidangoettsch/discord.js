@@ -562,6 +562,45 @@ class VoiceConnection extends EventEmitter {
     }
   }
 
+  joinStream(user) {
+    return new Promise((resolve, reject) => {
+      if (this.streamConn) reject("ALREADY_STREAMING")
+      const res = {}
+
+      this.client.once('streamServer', (data) => {
+        Object.assign(res, {
+          streamUrl: data.endpoint,
+          streamToken: data.token
+        })
+        if (res.streamServerID) resolve(res)
+      })
+
+      this.client.once('streamCreate', (data) => {
+        Object.assign(res, {
+          streamServerID: data.rtc_server_id,
+        })
+        if (res.streamUrl) resolve(res)
+      })
+
+      this.channel.guild.shard.send({
+        op: 20,
+        d: {
+          stream_key: `guild:${this.channel.guild.id}:${this.channel.id}:${user.id}`
+        }
+      })
+    }).then(({streamUrl, streamToken, streamServerID}) => new Promise((resolve, reject) => {
+      const conn = new StreamConnection(this, this.client, streamServerID)
+      this.streamConn = conn
+      conn.on('debug', msg =>
+        this.client.emit('debug', `[STREAM (${this.channel.guild.id}:${conn.status})]: ${msg}`),
+      );
+      conn.setSessionID(this.authentication.sessionID)
+      conn.setTokenAndEndpoint(streamToken, streamUrl)
+      conn.on('ready', () => resolve(conn))
+      conn.on('error', (e) => reject(error))
+    }))
+  }
+
   stream() {
     return new Promise((resolve, reject) => {
       if (this.streamConn) reject("ALREADY_STREAMING")

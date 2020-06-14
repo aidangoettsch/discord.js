@@ -2253,6 +2253,7 @@ declare module 'discord.js' {
     restRequestTimeout?: number;
     restSweepInterval?: number;
     retryLimit?: number;
+    tokenType?: 'Bearer' | 'Bot'
     presence?: PresenceData;
     ws?: WebSocketOptions;
     http?: HTTPOptions;

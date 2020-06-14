@@ -346,6 +346,10 @@ class WebSocketManager extends EventEmitter {
    */
   async _handleSessionLimit(remaining, resetAfter) {
     if (typeof remaining === 'undefined' && typeof resetAfter === 'undefined') {
+      if (this.client.options.tokenType !== "Bot") {
+        this.sessionStartLimit = {}
+        return
+      }
       const { session_start_limit } = await this.client.api.gateway.bot.get();
       this.sessionStartLimit = session_start_limit;
       remaining = session_start_limit.remaining;
