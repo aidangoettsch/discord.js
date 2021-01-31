@@ -123,6 +123,7 @@ class VideoPlayer extends EventEmitter {
   async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false, audio = true, useNvenc = false, useVaapi = false, inputFormat = "", manualFfmpeg = false, audioDelay = 0 } = {}) {
     await this.voiceConnection.resetVideoContext()
     const isStream = resource instanceof ReadableStream;
+    const isMux = resource.video && resource.audio
     if (!FFMPEG_ARGS.hasOwnProperty(this.voiceConnection.videoCodec)) {
       console.error(`[PLAY VIDEO ERROR] Codec ${this.voiceConnection.videoCodec} not supported`)
       return
@@ -168,7 +169,14 @@ class VideoPlayer extends EventEmitter {
       '-protocol_whitelist', 'tcp,tls,pipe,http,https,crypto',
       '-re',
       ...(isImage && JPEG_EXTS.includes(path.parse(resource).ext) ? ['-f', 'jpeg_pipe'] : []),
-      '-i', resourceUri,
+      ...(isMux ? ['-i', resourceUri] : [
+        '-i', resource.video,
+        ...(audioDelay < 0 ? ['-itsoffset', -audioDelay] : []),
+        '-i', resource.audio,
+        ...(audioDelay > 0 ? ['-itsoffset', audioDelay] : []),
+        '-map', '0:v:0',
+        '-map', '1:a:1'
+      ]),
       ...FFMPEG_ARGS[encoderName],
       ...((!isImage && audio) ? FFMPEG_ARGS.opus : [])
     ]
@@ -207,12 +215,6 @@ class VideoPlayer extends EventEmitter {
       this.ffmpeg.stderr.on('error', (e) => {
         this.emit('debug', `[ffmpeg err] ${e.toString()}`)
       })
-    }
-    if (streams.audioStream && audioDelay) {
-      streams.audioStream.pause()
-      setTimeout(() => {
-        streams.audioStream.resume()
-      }, audioDelay)
     }
 
     this.streams = streams
