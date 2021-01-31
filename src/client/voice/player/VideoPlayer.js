@@ -161,7 +161,7 @@ class VideoPlayer extends EventEmitter {
       return
     }
     const resourceUri = isStream ? "-" : resource
-    const isImage = isStream ? false : IMAGE_EXTS.includes(path.parse(resource).ext)
+    const isImage = isStream || isMux ? false : IMAGE_EXTS.includes(path.parse(resource).ext)
     const encoderName = (this.voiceConnection.videoCodec === "H264" && useNvenc) ? "H264_NVENC" :
       (this.voiceConnection.videoCodec === "H264" && useVaapi ? "H264_VAAPI" : this.voiceConnection.videoCodec)
 
@@ -169,16 +169,15 @@ class VideoPlayer extends EventEmitter {
       '-protocol_whitelist', 'tcp,tls,pipe,http,https,crypto',
       '-re',
       ...(isImage && JPEG_EXTS.includes(path.parse(resource).ext) ? ['-f', 'jpeg_pipe'] : []),
-      ...(isMux ? [
-        '-i', resource.video,
-        ...(audioDelay < 0 ? ['-itsoffset', -audioDelay] : []),
-        '-i', resource.audio,
+      ...(audioDelay < 0 ? ['-itsoffset', -audioDelay] : []),
+      '-i', ...(isMux ? [resource.video] : [resourceUri]),
+      ...(audio ? [
         ...(audioDelay > 0 ? ['-itsoffset', audioDelay] : []),
-        '-map', '0:v:0',
-        '-map', '1:a:0',
-      ] : ['-i', resourceUri]),
+        '-i', ...(isMux ? [resource.audio] : [resourceUri])
+      ] : []),
+      '-map', '0:v:0',
       ...FFMPEG_ARGS[encoderName],
-      ...((!isImage && audio) ? FFMPEG_ARGS.opus : [])
+      ...((!isImage && audio) ? ['-map', '1:a:0', ...FFMPEG_ARGS.opus] : [])
     ]
 
     if (isImage) args.unshift('-loop', '1')
