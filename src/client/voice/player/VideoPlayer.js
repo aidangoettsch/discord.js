@@ -120,7 +120,7 @@ class VideoPlayer extends EventEmitter {
     }
   }
 
-  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false, audio = true, useNvenc = false, useVaapi = false, inputFormat = "", manualFfmpeg = false, audioDelay = 0 } = {}) {
+  async playVideo(resource, { bitrate = "1M", volume = 1.0, listen = false, audio = true, useNvenc = false, useVaapi = false, inputFormat = "", manualFfmpeg = false, audioDelay = 0, rtBufferSize = "" } = {}) {
     await this.voiceConnection.resetVideoContext()
     const isStream = resource instanceof ReadableStream;
     const isMux = resource.video && resource.audio
@@ -168,10 +168,13 @@ class VideoPlayer extends EventEmitter {
     let args = [
       '-protocol_whitelist', 'tcp,tls,pipe,http,https,crypto',
       '-re',
+      ...(rtBufferSize ? ['-rtbufsize', rtBufferSize] : []),
       ...(isImage && JPEG_EXTS.includes(path.parse(resource).ext) ? ['-f', 'jpeg_pipe'] : []),
       ...(audioDelay < 0 ? ['-itsoffset', -audioDelay] : []),
       '-i', ...(isMux ? [resource.video] : [resourceUri]),
       ...(audio ? [
+        '-re',
+        ...(rtBufferSize ? ['-rtbufsize', rtBufferSize] : []),
         ...(audioDelay > 0 ? ['-itsoffset', audioDelay] : []),
         '-i', ...(isMux ? [resource.audio] : [resourceUri])
       ] : []),
