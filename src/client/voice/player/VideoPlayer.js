@@ -10,45 +10,63 @@ const path = require('path')
 
 const FFMPEG_ARGS = {
   VP8: [
+    '-an',
     '-c:v', 'libvpx',
     '-b:v', 'BITRATE',
     '-cpu-used', '2',
     '-deadline', 'realtime',
+    '-f', 'rtp',
+    'OUTPUT_URL',
   ],
   VP9: [
+    '-an',
     '-c:v', 'libvpx-vp9',
     '-b:v', 'BITRATE',
     '-cpu-used', '2',
     '-deadline', 'realtime',
     '-strict', 'experimental',
+    '-f', 'rtp',
+    'OUTPUT_URL',
   ],
   H264: [
+    '-an',
     '-c:v', 'libx264',
     '-b:v', 'BITRATE',
     '-bufsize', '1M',
     '-pix_fmt', 'yuv420p',
     '-preset', 'veryfast',
     '-profile:v', 'baseline',
+    '-f', 'rtp',
+    'OUTPUT_URL',
   ],
   H264_NVENC: [
+    '-an',
     '-c:v', 'h264_nvenc',
     '-b:v', 'BITRATE',
     '-bufsize', '1M',
     '-pix_fmt', 'yuv420p',
     '-profile:v', 'baseline',
+    '-f', 'rtp',
+    'OUTPUT_URL',
   ],
   H264_VAAPI: [
+    '-an',
     '-c:v', 'h264_vaapi',
     '-b:v', 'BITRATE',
     '-bufsize', '1M',
     '-pix_fmt', 'yuv420p',
     '-vaapi_device', '/dev/dri/renderD128',
     '-profile:v', 'constrained_baseline',
+    '-f', 'rtp',
+    'OUTPUT_URL',
   ],
   opus: [
+    '-vn',
     '-ar', '48000',
     '-af', "pan=stereo|FL < 1.0*FL + 0.707*FC + 0.707*BL|FR < 1.0*FR + 0.707*FC + 0.707*BR",
     '-c:a', 'libopus',
+    '-f', 'rtp',
+    'OUTPUT_URL'
   ]
 }
 const MTU = 1400
@@ -159,11 +177,8 @@ class VideoPlayer extends EventEmitter {
         '-map', '0:v:0',
         '-map', '1:a:0',
       ] : ['-i', resourceUri]),
-      ...(audio ? [] : ['-an']),
       ...FFMPEG_ARGS[encoderName],
-      ...((!isImage && audio) ? FFMPEG_ARGS.opus : []),
-      '-f', 'rtp',
-      'OUTPUT_URL',
+      ...((!isImage && audio) ? FFMPEG_ARGS.opus : [])
     ]
 
     if (isImage) args.unshift('-loop', '1')
