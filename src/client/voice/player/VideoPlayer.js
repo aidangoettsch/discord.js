@@ -173,7 +173,6 @@ class VideoPlayer extends EventEmitter {
       ...(audioDelay < 0 ? ['-itsoffset', -audioDelay] : []),
       '-i', ...(isMux ? [resource.video] : [resourceUri]),
       ...(audio ? [
-        ...(rtBufferSize ? ['-rtbufsize', rtBufferSize] : []),
         ...(audioDelay > 0 ? ['-itsoffset', audioDelay] : []),
         '-i', ...(isMux ? [resource.audio] : [resourceUri])
       ] : []),
