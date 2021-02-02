@@ -54,6 +54,7 @@ const FFMPEG_ARGS = {
     '-c:v', 'h264_vaapi',
     '-b:v', 'BITRATE',
     '-vf', 'format=nv12,hwupload',
+    '-profile:v', 'baseline',
     '-bufsize', '1M',
     '-vaapi_device', '/dev/dri/renderD128',
     '-f', 'rtp',
