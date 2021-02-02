@@ -168,15 +168,14 @@ class VideoPlayer extends EventEmitter {
       '-re',
       ...(rtBufferSize ? ['-rtbufsize', rtBufferSize] : []),
       ...(isImage && JPEG_EXTS.includes(path.parse(resource).ext) ? ['-f', 'jpeg_pipe'] : []),
-      ...(audioDelay < 0 ? ['-itsoffset', -audioDelay] : []),
       '-i', ...(isMux ? [resource.video] : [resourceUri]),
-      ...(audio ? [
-        ...(audioDelay > 0 ? ['-itsoffset', audioDelay] : []),
-        '-i', ...(isMux ? [resource.audio] : [resourceUri])
-      ] : []),
-      '-map', '0:v:0',
+      ...(audio && isMux ? ['-i', resource.audio] : []),
+      ...(audioDelay < 0 ? ['-vf', `trim=${-audioDelay},setpts=PTS-STARTPTS`] : []),
       ...FFMPEG_ARGS[encoderName],
-      ...((!isImage && audio) ? ['-map', '1:a:0', ...FFMPEG_ARGS.opus] : [])
+      ...((!isImage && audio) ? [
+          ...(audioDelay > 0 ? ['-af', `atrim=${audioDelay},asetpts=PTS-STARTPTS`] : []),
+        ...FFMPEG_ARGS.opus
+      ] : [])
     ]
 
     if (isImage) args.unshift('-loop', '1')
