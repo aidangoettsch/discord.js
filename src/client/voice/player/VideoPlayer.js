@@ -45,7 +45,7 @@ const FFMPEG_ARGS = {
     '-b:v', 'BITRATE',
     '-bufsize', '1M',
     '-pix_fmt', 'yuv420p',
-    '-profile:v', 'baseline',
+    '-vprofile', 'constrained_baseline',
     '-f', 'rtp',
     'OUTPUT_URL',
   ],
